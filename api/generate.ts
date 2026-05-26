@@ -1,5 +1,56 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { GoogleGenAI } from "@google/genai";
+import fs from "fs";
+import path from "path";
+
+// ── Local .env.local Loader Fallback ───────────────────────────────────────
+// When running locally under Vercel dev, CLI issues may prevent env vars from being
+// loaded automatically. This fallback ensures local keys are parsed directly.
+if (!process.env.GEMINI_API_KEY || !process.env.NVIDIA_API_KEY) {
+  try {
+    const envPaths = [
+      path.join(process.cwd(), ".env.local"),
+      path.join(process.cwd(), "..", ".env.local")
+    ];
+
+    try {
+      if (typeof __dirname !== "undefined") {
+        envPaths.push(path.resolve(__dirname, "..", ".env.local"));
+        envPaths.push(path.resolve(__dirname, ".env.local"));
+      } else {
+        // ESM fallback using import.meta.url
+        const dirname = path.dirname(new URL(import.meta.url).pathname);
+        const cleanDirname = dirname.startsWith('/') && !dirname.startsWith('//') ? dirname.substring(1) : dirname;
+        envPaths.push(path.resolve(cleanDirname, "..", ".env.local"));
+        envPaths.push(path.resolve(cleanDirname, ".env.local"));
+      }
+    } catch (err) {
+      // Ignore URL parsing errors
+    }
+
+    for (const envPath of envPaths) {
+      if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, "utf-8");
+        envContent.split(/\r?\n/).forEach((line) => {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith("#")) {
+            const index = trimmed.indexOf("=");
+            if (index !== -1) {
+              const key = trimmed.substring(0, index).trim();
+              const val = trimmed.substring(index + 1).trim();
+              if (key && !process.env[key]) {
+                process.env[key] = val;
+              }
+            }
+          }
+        });
+        break;
+      }
+    }
+  } catch (e) {
+    console.warn("無法主動加載 .env.local 檔案:", e);
+  }
+}
 
 // ── System prompt (shared for both providers) ──────────────────────────────
 const SYSTEM_INSTRUCTION = `
@@ -64,7 +115,7 @@ async function callGemini(userPrompt: string): Promise<string> {
 
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-lite-preview-06-17",
+    model: "gemini-2.5-flash-lite",
     contents: userPrompt,
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
@@ -94,7 +145,7 @@ async function callNvidia(userPrompt: string): Promise<string> {
           { role: "user", content: userPrompt },
         ],
         temperature: 0.3,
-        max_tokens: 4096,
+        max_tokens: 2048,
       }),
     }
   );
