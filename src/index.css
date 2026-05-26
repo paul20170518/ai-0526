@@ -1,0 +1,146 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Base style resets and customizations */
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc; /* bg-slate-50 */
+  color: #0f172a; /* text-slate-900 */
+}
+
+/* Elegant scrollbar style */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* High Fidelity Markdown Styling for Generated Meeting Minutes */
+.markdown-body {
+  font-family: var(--font-sans);
+  line-height: 1.75;
+}
+
+.markdown-body h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a; /* slate-900 */
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid #e2e8f0; /* slate-200 */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.markdown-body h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1e293b; /* slate-800 */
+  margin-top: 1.5rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #f1f5f9; /* slate-100 */
+}
+
+.markdown-body h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #334155; /* slate-700 */
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body p {
+  margin-bottom: 1rem;
+  color: #334155; /* slate-700 */
+  font-size: 0.95rem;
+}
+
+.markdown-body ul {
+  margin-bottom: 1.25rem;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+}
+
+.markdown-body ol {
+  margin-bottom: 1.25rem;
+  padding-left: 1.5rem;
+  list-style-type: decimal;
+}
+
+.markdown-body li {
+  margin-bottom: 0.4rem;
+  color: #334155;
+  font-size: 0.95rem;
+}
+
+.markdown-body li::marker {
+  color: #4f46e5; /* indigo-600 */
+}
+
+.markdown-body strong {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.markdown-body blockquote {
+  border-left: 4px solid #6366f1; /* indigo-500 */
+  padding-left: 1rem;
+  margin: 1.5rem 0;
+  color: #475569; /* slate-600 */
+  font-style: italic;
+  background-color: #f8fafc; /* slate-50 */
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+/* Checklist items rendered through markdown */
+.markdown-body li input[type="checkbox"] {
+  margin-right: 0.6rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: #6366f1;
+  vertical-align: middle;
+  cursor: pointer;
+  border-radius: 0.25rem;
+}
+
+/* Simple dividers */
+.markdown-body hr {
+  margin: 1.5rem 0;
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+/* Layout animations and skeleton frames */
+@keyframes pulse-glowing {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.4));
+  }
+}
+
+.glow-loading {
+  animation: pulse-glowing 2s infinite ease-in-out;
+}
