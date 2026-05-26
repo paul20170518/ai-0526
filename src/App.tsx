@@ -9,41 +9,76 @@ import {
   Trash2, 
   Download, 
   AlertCircle,
-  HelpCircle,
   CheckCircle2,
   Clock,
   ArrowRight,
   BookOpen,
   Settings,
-  ChevronRight,
   RefreshCw,
-  Search
+  Cpu,
+  Zap,
 } from "lucide-react";
 import { PRESET_SAMPLES, PresetSample } from "./presetTranscripts";
 
+// ── Provider config ──────────────────────────────────────────────────────────
+type Provider = "gemini" | "nvidia";
+
+const PROVIDERS: {
+  id: Provider;
+  label: string;
+  badge: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  ringColor: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    id: "gemini",
+    label: "Google Gemini",
+    badge: "Gemini 2.5 Flash Lite",
+    color: "text-indigo-700",
+    bgColor: "bg-indigo-50",
+    borderColor: "border-indigo-500",
+    ringColor: "ring-indigo-100",
+    icon: <Sparkles className="w-4 h-4" />,
+  },
+  {
+    id: "nvidia",
+    label: "NVIDIA NIM",
+    badge: "Nemotron Mini 4B",
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-50",
+    borderColor: "border-emerald-500",
+    ringColor: "ring-emerald-100",
+    icon: <Cpu className="w-4 h-4" />,
+  },
+];
+
 export default function App() {
-  // Input fields state
+  // ── Input state ────────────────────────────────────────────────────────────
   const [transcript, setTranscript] = useState<string>("");
   const [optionLength, setOptionLength] = useState<string>("標準詳細度");
   const [optionTone, setOptionTone] = useState<string>("專業商務");
   const [targetLanguage, setTargetLanguage] = useState<string>("英文 (English)");
   const [customFocus, setCustomFocus] = useState<string>("");
+  const [provider, setProvider] = useState<Provider>("gemini");
 
-  // App running states
+  // ── App running state ──────────────────────────────────────────────────────
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState<number>(0);
   const [result, setResult] = useState<string>("");
   const [copied, setCopied] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [activeSampleId, setActiveSampleId] = useState<string>("");
 
-  // Statistics (derived states)
+  // ── Derived ────────────────────────────────────────────────────────────────
   const charCount = transcript.trim().length;
   const wordEstimate = transcript.trim() ? transcript.trim().split(/\s+/).length : 0;
+  const activeProvider = PROVIDERS.find((p) => p.id === provider)!;
 
-  // Rotating informative phrases during processing to delight users
-  const LOADING_STEPS = [
+  // ── Loading steps ──────────────────────────────────────────────────────────
+  const LOADING_STEPS_GEMINI = [
     "正在連線安全的 Google Gemini AI 雲端服務...",
     "正在通讀並解析您貼上的會議逐字稿內容...",
     "正在篩選重疊、發言助詞與冗餘對話資訊...",
@@ -51,28 +86,25 @@ export default function App() {
     "正在歸納出核心議題與共識決議事項...",
     "正在整理 Markdown 代辦清單及對應指派人...",
     "正在將會議記錄對照精準翻譯成 " + targetLanguage + "...",
-    "最後潤色，正為您呈現美觀且專業的排版報告..."
+    "最後潤色，正為您呈現美觀且專業的排版報告...",
   ];
 
-  // Dynamic status check on component mount to verify integration
-  useEffect(() => {
-    const checkConfigStatus = async () => {
-      try {
-        const response = await fetch("/api/config-status");
-        if (response.ok) {
-          const data = await response.json();
-          setHasApiKey(data.hasApiKey);
-        }
-      } catch (err) {
-        console.error("無法與後端連線檢查 API Key 狀態：", err);
-      }
-    };
-    checkConfigStatus();
-  }, []);
+  const LOADING_STEPS_NVIDIA = [
+    "正在連線 NVIDIA NIM AI 雲端推論平台...",
+    "正在通讀並解析您貼上的會議逐字稿內容...",
+    "Nemotron 模型正在提取會議關鍵資訊...",
+    "正在梳理發言角色關係，提取主要討論重點...",
+    "正在歸納出核心議題與共識決議事項...",
+    "正在整理 Markdown 代辦清單及對應指派人...",
+    "正在將會議記錄對照精準翻譯成 " + targetLanguage + "...",
+    "最後潤色，正為您呈現美觀且專業的排版報告...",
+  ];
 
-  // Interval hook to loop through interesting loading statements
+  const LOADING_STEPS = provider === "nvidia" ? LOADING_STEPS_NVIDIA : LOADING_STEPS_GEMINI;
+
+  // ── Loading message rotator ─────────────────────────────────────────────
   useEffect(() => {
-    let intervalId: any;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
     if (loading) {
       intervalId = setInterval(() => {
         setLoadingMessageIndex((prev) => (prev + 1) % LOADING_STEPS.length);
@@ -83,9 +115,9 @@ export default function App() {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [loading, targetLanguage]);
+  }, [loading, targetLanguage, provider]);
 
-  // Submit hander to proxy API requests
+  // ── Submit handler ──────────────────────────────────────────────────────────
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transcript || transcript.trim() === "") {
@@ -99,12 +131,11 @@ export default function App() {
     setLoadingMessageIndex(0);
 
     try {
-      const response = await fetch("/api/summarize", {
+      const response = await fetch("/api/generate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           transcript,
           optionLength,
           optionTone,
@@ -116,27 +147,24 @@ export default function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "生成失敗，請檢查系統指令設定或 API 回應。");
+        throw new Error(data.error || "生成失敗，請檢查系統設定或 API 回應。");
       }
 
       setResult(data.result);
-      // Scroll to result on small screens
       setTimeout(() => {
         const resultEl = document.getElementById("analysis-result-section");
-        if (resultEl) {
-          resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+        if (resultEl) resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
-
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "伺服器通訊錯誤，請確認設定是否正常。";
       console.error(err);
-      setError(err.message || "伺服器通訊錯誤，請確認 Server 是否正常運作。");
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Safe clipboard copy helper
+  // ── Helpers ────────────────────────────────────────────────────────────────
   const handleCopy = () => {
     if (!result) return;
     navigator.clipboard.writeText(result);
@@ -144,24 +172,18 @@ export default function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Safe markdown exporter
   const handleExport = () => {
     if (!result) return;
     const blob = new Blob([result], { type: "text/markdown;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    
-    // Choose file name based on custom focus, active sample, or date
     const dateStr = new Date().toISOString().slice(0, 10);
     let fileName = `會議精華與翻譯_${dateStr}.md`;
     if (activeSampleId) {
-      const activeSample = PRESET_SAMPLES.find(s => s.id === activeSampleId);
-      if (activeSample) {
-        fileName = `${activeSample.title}_精華總結.md`;
-      }
+      const activeSample = PRESET_SAMPLES.find((s) => s.id === activeSampleId);
+      if (activeSample) fileName = `${activeSample.title}_精華總結.md`;
     }
-    
     link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
@@ -173,8 +195,6 @@ export default function App() {
     setCustomFocus("");
     setActiveSampleId(sample.id);
     setError("");
-    
-    // Auto-adjust parameters depending on sample chosen to feel smarter
     if (sample.id === "marketing-strategy") {
       setTargetLanguage("繁體中文對照 (zh-TW)");
       setOptionTone("行動與共識導向");
@@ -185,12 +205,8 @@ export default function App() {
       setTargetLanguage("英文 (English)");
       setOptionTone("專業商務");
     }
-
-    // Scroll smoothly to input textarea
     const textareaEl = document.getElementById("transcript-textarea");
-    if (textareaEl) {
-      textareaEl.focus();
-    }
+    if (textareaEl) textareaEl.focus();
   };
 
   const handleClear = () => {
@@ -199,21 +215,11 @@ export default function App() {
     setError("");
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-16 flex flex-col antialiased">
-      {/* Missing API Key Warning Block */}
-      {!hasApiKey && (
-        <div className="bg-amber-500 text-white text-sm font-medium px-4 py-3 shadow-md flex items-center justify-between transition-all duration-300">
-          <div className="flex items-center gap-3 max-w-4xl mx-auto w-full">
-            <AlertCircle className="w-5 h-5 shrink-0 animate-bounce" />
-            <span>
-              <strong>提示：</strong>目前伺服器端未偵測到您的 <strong>GEMINI_API_KEY</strong>。請點擊頁面右上角的 <strong>Settings &gt; Secrets</strong> 新增一組名為 <code>GEMINI_API_KEY</code> 的金鑰，否則送出會發生錯誤！
-            </span>
-          </div>
-        </div>
-      )}
 
-      {/* Main App Bar Header */}
+      {/* ── Header ── */}
       <header className="w-full bg-white border-b border-slate-200 sticky top-0 z-10 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -230,24 +236,26 @@ export default function App() {
             </div>
           </div>
 
+          {/* Active provider badge */}
           <div className="flex items-center gap-3 self-stretch sm:self-auto justify-between sm:justify-end">
-            <div className="flex items-center gap-2 bg-indigo-50/60 border border-indigo-100 rounded-full px-4 py-1.5 text-xs text-indigo-700 font-semibold shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
-              Gemini 3.5 Flash 驅動
-            </div>
-            
-            <div className="text-xs text-slate-400 font-mono hidden md:block">
-              Time UTC: 2026-05-26 01:50
+            <div
+              className={`flex items-center gap-2 ${activeProvider.bgColor} border ${activeProvider.borderColor}/30 rounded-full px-4 py-1.5 text-xs ${activeProvider.color} font-semibold shadow-xs transition-all duration-300`}
+            >
+              <span className={`w-2 h-2 rounded-full ${provider === "gemini" ? "bg-indigo-500" : "bg-emerald-500"} animate-ping`} />
+              {activeProvider.icon}
+              {activeProvider.badge} 驅動
             </div>
           </div>
         </div>
       </header>
 
-      {/* Hero Intro Section and Preset Chips */}
+      {/* ── Main ── */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
-        {/* LEFT COLUMN: Input and customization */}
+
+        {/* ── LEFT COLUMN ── */}
         <section className="lg:col-span-6 flex flex-col gap-6" id="input-control-panel">
-          {/* Welcome guide & Preset Samples */}
+
+          {/* Preset samples */}
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
             <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-indigo-500" />
@@ -256,7 +264,6 @@ export default function App() {
             <p className="text-xs text-slate-500 mb-4 leading-relaxed">
               若手邊沒有現成的會議記錄，請點選下方精心設計的真實會議模擬，一鍵自動填充並配置最合適的首選設定參數：
             </p>
-
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {PRESET_SAMPLES.map((sample) => {
                 const isActive = activeSampleId === sample.id;
@@ -266,14 +273,14 @@ export default function App() {
                     onClick={() => handleApplyPreset(sample)}
                     type="button"
                     className={`flex flex-col text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer ${
-                      isActive 
-                        ? "border-indigo-600 bg-indigo-50/50 shadow-xs ring-2 ring-indigo-100" 
+                      isActive
+                        ? "border-indigo-600 bg-indigo-50/50 shadow-xs ring-2 ring-indigo-100"
                         : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
                     }`}
                   >
                     <span className="text-xs font-bold text-slate-800 truncate mb-1 flex items-center justify-between w-full">
                       {sample.title}
-                      {isActive && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0 ml-1"></span>}
+                      {isActive && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0 ml-1" />}
                     </span>
                     <span className="text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100/50 rounded px-1 w-max mb-1 font-semibold">
                       {sample.category}
@@ -287,7 +294,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Form Area */}
+          {/* Form */}
           <form onSubmit={handleGenerate} className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col gap-5">
             <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center justify-between">
               <span className="flex items-center gap-2">
@@ -306,7 +313,7 @@ export default function App() {
               )}
             </h2>
 
-            {/* Markdown Text Area */}
+            {/* Textarea */}
             <div className="relative">
               <textarea
                 id="transcript-textarea"
@@ -314,14 +321,12 @@ export default function App() {
                 value={transcript}
                 onChange={(e) => {
                   setTranscript(e.target.value);
-                  if (activeSampleId) setActiveSampleId(""); // Reset active sample indicator since it's customized
+                  if (activeSampleId) setActiveSampleId("");
                   setError("");
                 }}
                 placeholder="在此貼上您要解析的會議英文、中文、或中英文混雜之會議原始逐字稿（Transcript）、即時對談紀錄或粗糙的速記點..."
                 className="w-full rounded-xl border border-slate-200 p-4 font-sans text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all leading-relaxed"
               />
-              
-              {/* Overlay Statistics bar */}
               <div className="absolute bottom-3 right-3 flex items-center gap-3 bg-white/95 backdrop-blur-xs border border-slate-150 px-3 py-1.5 rounded-lg text-[11px] font-medium text-slate-500 shadow-xs">
                 <span className="flex items-center gap-1">
                   字數: <strong className="text-slate-700 font-mono">{charCount}</strong>
@@ -333,16 +338,60 @@ export default function App() {
               </div>
             </div>
 
-            {/* Advanced AI Customizers */}
             <hr className="border-slate-100" />
-            
+
             <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
-              <Settings className="w-4 h-4 text-indigo-500 animate-spin-slow" />
+              <Settings className="w-4 h-4 text-indigo-500" />
               第三步：智能客製化設定 (AI Customization)
             </div>
 
+            {/* ── AI Provider Selection ── */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  AI 服務提供商
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">AI Provider</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="AI 服務提供商">
+                {PROVIDERS.map((p) => {
+                  const isSelected = provider === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      id={`provider-btn-${p.id}`}
+                      onClick={() => setProvider(p.id)}
+                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                        isSelected
+                          ? `${p.borderColor} ${p.bgColor} ${p.color} ring-2 ${p.ringColor} shadow-sm`
+                          : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className={`${isSelected ? p.color : "text-slate-400"} transition-colors`}>
+                        {p.icon}
+                      </span>
+                      <div className="flex flex-col text-left leading-tight">
+                        <span>{p.label}</span>
+                        <span className={`text-[9px] font-normal ${isSelected ? "opacity-80" : "text-slate-400"}`}>
+                          {p.badge}
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className={`w-3.5 h-3.5 ml-auto ${p.color}`} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Customizers grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Option 1: Depth/Length */}
+              {/* Length */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   記錄長度模式
@@ -359,7 +408,7 @@ export default function App() {
                 </select>
               </div>
 
-              {/* Option 2: Tone Selection */}
+              {/* Tone */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   記錄語氣風格
@@ -376,7 +425,7 @@ export default function App() {
                 </select>
               </div>
 
-              {/* Option 3: Translation Dropdown */}
+              {/* Language */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   翻譯目標語言
@@ -398,7 +447,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Custom Focus Prompt Area */}
+            {/* Custom focus */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                 <span>特別關注焦點 <span className="text-[10px] font-normal text-indigo-500">（選填）</span></span>
@@ -406,6 +455,7 @@ export default function App() {
               </label>
               <input
                 type="text"
+                id="custom-focus-input"
                 value={customFocus}
                 onChange={(e) => setCustomFocus(e.target.value)}
                 placeholder="例如：『預算超支、AI介面安全性、雅婷接下來的任務』"
@@ -413,77 +463,76 @@ export default function App() {
               />
             </div>
 
-            {/* Error messaging state */}
+            {/* Error state */}
             {error && (
               <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-4 py-3 rounded-xl flex items-start gap-2.5 animate-pulse">
-                <AlertCircle className="w-4.5 h-4.5 shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
 
-            {/* Trigger Button */}
+            {/* Submit */}
             <button
               type="submit"
+              id="generate-btn"
               disabled={loading || !transcript.trim()}
               className={`w-full py-3.5 px-5 rounded-xl text-sm font-semibold tracking-wide flex items-center justify-center gap-2 transition-all duration-300 relative overflow-hidden select-none cursor-pointer ${
                 loading
                   ? "bg-slate-300 text-slate-600 cursor-not-allowed"
                   : !transcript.trim()
-                    ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                    : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md active:scale-[0.98] cursor-pointer"
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : provider === "nvidia"
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-[0.98]"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md active:scale-[0.98]"
               }`}
             >
-              <Sparkles className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              <span>{loading ? "會議重點析取中..." : "開始分析：生成總結與翻譯"}</span>
-              <ArrowRight className="w-4 h-4 ml-1" />
+              {loading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                activeProvider.icon
+              )}
+              <span>{loading ? "會議重點析取中..." : `開始分析：使用 ${activeProvider.label} 生成總結`}</span>
+              {!loading && <ArrowRight className="w-4 h-4 ml-1" />}
             </button>
           </form>
         </section>
 
-        {/* RIGHT COLUMN: Output display */}
+        {/* ── RIGHT COLUMN ── */}
         <section className="lg:col-span-6 flex flex-col" id="analysis-result-section">
-          {/* Card Frame wrapping results */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden min-h-[500px]">
-            {/* Header segment of results */}
+            {/* Result header */}
             <div className="border-b border-slate-150 px-6 py-4 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                <div className={`w-2.5 h-2.5 rounded-full ${result && !loading ? "bg-emerald-500" : "bg-slate-300"}`} />
                 <h2 className="text-sm font-extrabold text-slate-800 tracking-wide uppercase">
                   AI 分析與翻譯成果區
                 </h2>
               </div>
-              
+
               {result && !loading && (
                 <div className="flex items-center gap-2">
-                  {/* One-click copy */}
                   <button
                     onClick={handleCopy}
                     type="button"
+                    id="copy-result-btn"
                     title="一鍵複製 Markdown 格式記錄"
                     className={`text-xs px-3 py-1.5 rounded-lg border font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      copied 
-                        ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
+                      copied
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                         : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700"
                     }`}
                   >
                     {copied ? (
-                      <>
-                        <ClipboardCheck className="w-3.5 h-3.5" />
-                        <span>已複製！</span>
-                      </>
+                      <><ClipboardCheck className="w-3.5 h-3.5" /><span>已複製！</span></>
                     ) : (
-                      <>
-                        <Clipboard className="w-3.5 h-3.5" />
-                        <span>一鍵複製</span>
-                      </>
+                      <><Clipboard className="w-3.5 h-3.5" /><span>一鍵複製</span></>
                     )}
                   </button>
-
-                  {/* Export Markdown File */}
                   <button
                     onClick={handleExport}
                     type="button"
-                    title="匯出下載為標籤 Markdown 檔案"
+                    id="export-result-btn"
+                    title="匯出下載為 Markdown 檔案"
                     className="bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
@@ -493,29 +542,24 @@ export default function App() {
               )}
             </div>
 
-            {/* Main content body inside result block with status control */}
+            {/* Result body */}
             <div className="flex-1 p-6 flex flex-col overflow-y-auto">
-              {/* STATUS 1: Blank slate when app is idle */}
+
+              {/* Idle state */}
               {!result && !loading && (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-8 max-w-md mx-auto my-auto">
                   <div className="relative mb-6">
-                    <div className="absolute inset-0 bg-indigo-100 rounded-full blur-2xl opacity-75 animate-pulse"></div>
+                    <div className="absolute inset-0 bg-indigo-100 rounded-full blur-2xl opacity-75 animate-pulse" />
                     <div className="relative bg-indigo-50 border border-indigo-100 p-5 rounded-2xl text-indigo-600 text-6xl shadow-sm">
                       <Sparkles className="w-12 h-12" />
                     </div>
                   </div>
-                  
-                  <h3 className="text-base font-bold text-slate-800 mb-2">
-                    智慧會議筆記已準備就緒
-                  </h3>
+                  <h3 className="text-base font-bold text-slate-800 mb-2">智慧會議筆記已準備就緒</h3>
                   <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                    請按順序在左側貼上您的會議逐字稿（或直接點擊上方快速體驗範例），然後點一下「生成總結與翻譯」按鈕，AI 會為您智慧總結、劃出主要共識、建立代辦事項清單並完整翻譯。
+                    請按順序在左側貼上您的會議逐字稿（或直接點擊上方快速體驗範例），選擇 AI 服務提供商，然後點一下「生成總結與翻譯」按鈕。
                   </p>
-
                   <div className="w-full text-left bg-slate-50 border border-slate-100 rounded-xl p-4 flex flex-col gap-2.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      核心技術優勢
-                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">核心技術優勢</span>
                     <div className="flex items-start gap-2 text-xs text-slate-600">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
                       <span><strong>多維角色梳理</strong>：自動隔離非關鍵發言與雜訊。</span>
@@ -526,58 +570,59 @@ export default function App() {
                     </div>
                     <div className="flex items-start gap-2 text-xs text-slate-600">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                      <span><strong>雙引擎支援</strong>：可切換 Google Gemini 或 NVIDIA Nemotron 模型。</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-xs text-slate-600">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
                       <span><strong>商務多語翻譯</strong>：不失真地轉化為地道商業外語。</span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* STATUS 2: Highly animated state display during loading */}
+              {/* Loading state */}
               {loading && (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center my-auto transition-all duration-300">
-                  <div className="relative mb-8 text-indigo-600 glow-loading">
-                    {/* Glowing progress loops */}
-                    <div className="absolute inset-x-[-15px] inset-y-[-15px] border-2 border-indigo-500/20 rounded-full animate-ping"></div>
-                    <div className="bg-indigo-600 p-6 rounded-3xl text-white shadow-xl flex items-center justify-center">
+                  <div className={`relative mb-8 glow-loading ${provider === "nvidia" ? "text-emerald-600" : "text-indigo-600"}`}>
+                    <div className={`absolute inset-x-[-15px] inset-y-[-15px] border-2 ${provider === "nvidia" ? "border-emerald-500/20" : "border-indigo-500/20"} rounded-full animate-ping`} />
+                    <div className={`${provider === "nvidia" ? "bg-emerald-600" : "bg-indigo-600"} p-6 rounded-3xl text-white shadow-xl flex items-center justify-center`}>
                       <Languages className="w-10 h-10 animate-pulse" />
                     </div>
                   </div>
-
                   <div className="w-full max-w-sm">
-                    {/* Subtle progress indicator */}
                     <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mb-5">
-                      <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full animate-[progress_15s_infinite_linear]" style={{ width: "85%" }}></div>
+                      <div
+                        className={`h-full rounded-full animate-[progress_15s_infinite_linear] ${
+                          provider === "nvidia"
+                            ? "bg-gradient-to-r from-emerald-500 to-teal-500"
+                            : "bg-gradient-to-r from-indigo-500 to-violet-500"
+                        }`}
+                        style={{ width: "85%" }}
+                      />
                     </div>
-
                     <h4 className="text-sm font-bold text-slate-800 mb-2 flex items-center justify-center gap-1.5">
-                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                      <RefreshCw className={`w-4 h-4 animate-spin ${provider === "nvidia" ? "text-emerald-600" : "text-indigo-600"}`} />
                       正在提取並分析會議記錄
                     </h4>
-                    
-                    {/* Rotating human reassuring phrases block */}
-                    <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100/50 rounded-lg px-4 py-2.5 font-medium min-h-[50px] flex items-center justify-center leading-relaxed">
+                    <p className={`text-xs ${provider === "nvidia" ? "text-emerald-700 bg-emerald-50 border-emerald-100/50" : "text-indigo-600 bg-indigo-50 border-indigo-100/50"} border rounded-lg px-4 py-2.5 font-medium min-h-[50px] flex items-center justify-center leading-relaxed`}>
                       {LOADING_STEPS[loadingMessageIndex]}
                     </p>
-
                     <span className="text-[10px] text-slate-400 mt-4 block leading-normal">
-                      這將自動過濾背景噪音，通常只需要 10 秒。請稍候。
+                      這將自動過濾背景噪音，通常只需要 10–20 秒。請稍候。
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* STATUS 3: Complete result displays with markup renderer */}
+              {/* Result state */}
               {result && !loading && (
                 <div className="fade-in-up duration-350">
-                  {/* Subtle success header banner */}
                   <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl px-4 py-3 mb-6 flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="text-xs font-semibold">
-                      分析生成成功！已根據：長度「{optionLength}」、語氣「{optionTone}」與指定語系翻譯產出。
+                      分析生成成功！使用 <strong>{activeProvider.label}</strong>，已根據：長度「{optionLength}」、語氣「{optionTone}」與指定語系翻譯產出。
                     </span>
                   </div>
-
-                  {/* Rendering element */}
                   <div className="markdown-body select-text">
                     <Markdown>{result}</Markdown>
                   </div>
@@ -588,22 +633,20 @@ export default function App() {
         </section>
       </main>
 
-        {/* Footer info section bar */}
-        <footer className="w-full text-center border-t border-slate-200 mt-12 pt-6 shrink-0 bg-white">
-          <div className="max-w-7xl mx-auto px-4 text-slate-400 text-xs flex flex-col md:flex-row items-center justify-between gap-4 py-4">
-            <span>
-              © 2026 AI 會議記錄生成與翻譯工具. 利用多階段語意整理技術.
+      {/* ── Footer ── */}
+      <footer className="w-full text-center border-t border-slate-200 mt-12 pt-6 shrink-0 bg-white">
+        <div className="max-w-7xl mx-auto px-4 text-slate-400 text-xs flex flex-col md:flex-row items-center justify-between gap-4 py-4">
+          <span>© 2026 AI 會議記錄生成與翻譯工具. 利用多階段語意整理技術.</span>
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1 font-semibold text-slate-500">
+              <Clock className="w-3.5 h-3.5" />
+              本地時間: {new Date().toLocaleDateString("zh-TW")}
             </span>
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1 font-semibold text-slate-500">
-                <Clock className="w-3.5 h-3.5" />
-                本地時間: 2026-05-26
-              </span>
-              <span className="text-slate-200">|</span>
-              <span className="text-slate-400">繁體中文版設計</span>
-            </div>
+            <span className="text-slate-200">|</span>
+            <span className="text-slate-400">繁體中文版設計 • Vercel Serverless</span>
           </div>
-        </footer>
+        </div>
+      </footer>
     </div>
   );
 }
